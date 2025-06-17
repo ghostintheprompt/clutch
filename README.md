@@ -228,6 +228,31 @@ MIT License - Use it, modify it, deploy it. Just don't blame us if surveillance 
 
 Found a way to improve IMSI catcher detection? Want to add support for more platforms? Pull requests welcome.
 
-## Disclaimer
+## ⚠️ Important Legal & Ethical Notice
 
-This tool is designed to detect surveillance equipment for defensive purposes. Use responsibly and in accordance with local laws. The authors are not responsible for how you use this software or any consequences that result from its use.
+### **Intended Use - Defense Only**
+This tool is designed **exclusively for detecting surveillance equipment for defensive purposes**. It is intended to help journalists, activists, and security professionals protect themselves from unauthorized surveillance.
+
+### **Prohibited Uses**
+**DO NOT use this software to:**
+- Conduct unauthorized surveillance of others
+- Interfere with legitimate cellular network operations
+- Violate privacy laws or telecommunications regulations
+- Engage in any illegal monitoring activities
+- Circumvent security measures of cellular networks
+
+### **Legal Compliance**
+- **Check local laws** before using this software in your jurisdiction
+- **Respect privacy rights** of others and legitimate network operations
+- **Use only for defensive purposes** - protecting yourself, not monitoring others
+- **Comply with telecommunications regulations** in your country/region
+
+### **Ethical Responsibility**
+The same technology that detects surveillance can potentially be misused for surveillance. We trust users to:
+- Use this tool responsibly and ethically
+- Respect the privacy and rights of others
+- Focus on defensive applications only
+- Report any misuse to appropriate authorities
+
+### **Disclaimer**
+The authors provide this software for legitimate security research and defensive purposes only. We are not responsible for any misuse, illegal activity, or consequences resulting from the use of this software. Users assume full responsibility for compliance with applicable laws and ethical standards.
