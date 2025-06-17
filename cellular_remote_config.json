@@ -1,0 +1,13 @@
+{
+  "monitoring_rules": {
+    "high_severity_immediate": true,
+    "location_tracking": true,
+    "threat_correlation": true,
+    "auto_export": true
+  },
+  "notifications": {
+    "email_alerts": false,
+    "slack_webhook": "",
+    "telegram_bot_token": ""
+  }
+}

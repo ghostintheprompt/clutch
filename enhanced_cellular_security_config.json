@@ -1,0 +1,184 @@
+{
+  "monitor_interval": 5,
+  "baseline_period_minutes": 30,
+  "max_measurements": 50000,
+  "signal_anomaly_threshold": 15,
+  "tower_change_threshold": 8,
+  "location_accuracy_threshold": 50,
+  
+  "suspicious_signal_patterns": {
+    "sudden_signal_increase": 20,
+    "rapid_tower_changes": 10,
+    "encryption_downgrades": true,
+    "timing_advance_anomalies": true,
+    "frequency_deviations": true,
+    "protocol_anomalies": true
+  },
+  
+  "imsi_catcher_detection": {
+    "enabled": true,
+    "signal_strength_threshold": 25,
+    "location_mismatch_threshold": 500,
+    "encryption_monitoring": true,
+    "lac_monitoring": true,
+    "technology_downgrade_detection": true,
+    "timing_advance_monitoring": true,
+    "rf_fingerprint_analysis": true,
+    "protocol_analysis": true,
+    "jamming_detection": true,
+    "location_spoofing_detection": true
+  },
+  
+  "advanced_detection_thresholds": {
+    "timing_advance_anomaly": 50,
+    "signal_power_jump": 15,
+    "frequency_deviation": 200,
+    "downgrade_probability": 0.7,
+    "location_spoofing": 100,
+    "rf_fingerprint_match": 0.85,
+    "protocol_anomaly": 0.8,
+    "traffic_analysis": 0.9,
+    "sinr_threshold": -10,
+    "rsrq_variation_threshold": 10,
+    "impossible_speed_threshold": 500
+  },
+  
+  "machine_learning": {
+    "enabled": true,
+    "model_training": true,
+    "feature_extraction": true,
+    "pattern_recognition": true,
+    "anomaly_detection": true,
+    "baseline_learning_period": 1800
+  },
+  
+  "notifications": {
+    "enabled": true,
+    "threat_levels": ["medium", "high", "critical"],
+    "sound_alerts": true,
+    "desktop_notifications": true,
+    "log_to_file": true,
+    "email_alerts": false,
+    "webhook_url": ""
+  },
+  
+  "visualization": {
+    "enabled": true,
+    "real_time_plots": true,
+    "signal_analysis": true,
+    "threat_timeline": true,
+    "frequency_analysis": true,
+    "save_plots": true,
+    "plot_update_interval": 10
+  },
+  
+  "data_export": {
+    "auto_export": false,
+    "export_interval_hours": 24,
+    "export_format": "json",
+    "include_raw_data": true,
+    "include_analysis": true,
+    "compress_exports": true
+  },
+  
+  "security": {
+    "encrypt_stored_data": false,
+    "secure_communications": true,
+    "data_retention_days": 30,
+    "anonymize_location_data": false,
+    "audit_logging": true
+  },
+  
+  "hardware_interfaces": {
+    "modem_manager": true,
+    "at_commands": false,
+    "sdr_integration": false,
+    "gps_tracking": true,
+    "external_sensors": false
+  },
+  
+  "known_imsi_catchers": {
+    "signature_database": [
+      {
+        "name": "StingRay",
+        "signatures": {
+          "timing_advance_pattern": [0, 1, 0, 1],
+          "signal_characteristics": {"power_variations": "high"},
+          "protocol_deviations": ["invalid_lac", "forced_2g"]
+        }
+      },
+      {
+        "name": "Hailstorm", 
+        "signatures": {
+          "timing_advance_pattern": [0, 0, 1, 1],
+          "signal_characteristics": {"power_variations": "medium"},
+          "protocol_deviations": ["encryption_downgrade"]
+        }
+      },
+      {
+        "name": "DRT Box",
+        "signatures": {
+          "timing_advance_pattern": [1, 0, 0, 0],
+          "signal_characteristics": {"power_variations": "low"},
+          "protocol_deviations": ["fake_paging", "location_update_reject"]
+        }
+      },
+      {
+        "name": "Generic IMSI Catcher",
+        "signatures": {
+          "timing_advance_pattern": [0, 0, 0, 0],
+          "signal_characteristics": {"power_variations": "variable"},
+          "protocol_deviations": ["rapid_handovers", "signal_jamming"]
+        }
+      }
+    ]
+  },
+  
+  "cellular_bands": {
+    "gsm_bands": {
+      "GSM850": {"uplink": [824, 849], "downlink": [869, 894]},
+      "GSM900": {"uplink": [880, 915], "downlink": [925, 960]},
+      "GSM1800": {"uplink": [1710, 1785], "downlink": [1805, 1880]},
+      "GSM1900": {"uplink": [1850, 1910], "downlink": [1930, 1990]}
+    },
+    "lte_bands": {
+      "B1": {"uplink": [1920, 1980], "downlink": [2110, 2170]},
+      "B3": {"uplink": [1710, 1785], "downlink": [1805, 1880]},
+      "B7": {"uplink": [2500, 2570], "downlink": [2620, 2690]},
+      "B8": {"uplink": [880, 915], "downlink": [925, 960]},
+      "B20": {"uplink": [832, 862], "downlink": [791, 821]},
+      "B28": {"uplink": [703, 748], "downlink": [758, 803]}
+    },
+    "5g_bands": {
+      "n1": {"uplink": [1920, 1980], "downlink": [2110, 2170]},
+      "n3": {"uplink": [1710, 1785], "downlink": [1805, 1880]},
+      "n7": {"uplink": [2500, 2570], "downlink": [2620, 2690]},
+      "n78": {"uplink": [3300, 3800], "downlink": [3300, 3800]},
+      "n258": {"uplink": [24250, 27500], "downlink": [24250, 27500]}
+    }
+  },
+  
+  "threat_responses": {
+    "auto_responses": false,
+    "isolation_mode": false,
+    "alert_authorities": false,
+    "log_forensic_data": true,
+    "backup_communications": false
+  },
+  
+  "logging": {
+    "log_level": "INFO",
+    "log_file": "cellular_security.log",
+    "max_log_size_mb": 100,
+    "log_rotation": true,
+    "detailed_logging": true,
+    "performance_logging": false
+  },
+  
+  "testing": {
+    "simulation_mode": false,
+    "test_threat_generation": false,
+    "synthetic_data": false,
+    "benchmark_mode": false
+  }
+}
