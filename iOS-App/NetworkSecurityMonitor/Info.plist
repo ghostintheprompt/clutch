@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>2.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
@@ -67,5 +67,23 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location data is used to correlate cellular network security threats with geographic information. This helps detect suspicious cell tower activity and IMSI catchers in your area.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Location data is used to correlate cellular network security threats with geographic information, even when the app is in the background. This enables continuous monitoring for IMSI catchers and suspicious cell towers.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Local network access is required to communicate with your Mac for real-time security monitoring and threat sharing.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_netsecmonitor._tcp</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+		<string>location</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

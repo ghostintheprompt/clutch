@@ -27,8 +27,8 @@ A beautiful iOS companion app that creates a **bi-directional monitoring network
 ## 🚀 Quick Setup
 
 ### Prerequisites
-- iOS 15.0 or later
-- Xcode 13.0 or later (for building)
+- iOS 18.0 or later
+- Xcode 16.0 or later (for building)
 - Mac running the Network Security Monitor
 - Both devices on the same network
 
@@ -153,7 +153,7 @@ The app expects JSON messages in this format:
 
 ## 📱 System Requirements
 
-- **iOS**: 15.0 or later
+- **iOS**: 18.0 or later
 - **Devices**: iPhone, iPad
 - **Network**: Wi-Fi connection
 - **Storage**: ~10MB
