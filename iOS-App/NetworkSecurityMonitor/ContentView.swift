@@ -1036,7 +1036,7 @@ struct SettingsView: View {
                 
                 Section("Cellular Security") {
                     Toggle("IMSI Catcher Detection", isOn: $cellularMonitoringEnabled)
-                        .onChange(of: cellularMonitoringEnabled) { enabled in
+                        .onChange(of: cellularMonitoringEnabled) { _, enabled in
                             if enabled {
                                 cellularService.startMonitoring()
                             } else {
@@ -1104,7 +1104,7 @@ struct SettingsView: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("1.0.0")
+                        Text("2.0")
                             .foregroundColor(.secondary)
                     }
                     
@@ -1911,7 +1911,7 @@ class RemoteMonitoringService: NSObject, ObservableObject {
             "device_name": UIDevice.current.name,
             "api_key": apiKey,
             "device_type": "iOS",
-            "app_version": "1.0.0",
+            "app_version": "2.0",
             "timestamp": ISO8601DateFormatter().string(from: Date())
         ]
         
