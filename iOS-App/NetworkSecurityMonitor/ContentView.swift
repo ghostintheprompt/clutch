@@ -14,6 +14,7 @@ import SystemConfiguration.CaptiveNetwork
 import CoreLocation
 
 // MARK: - Real Cellular Monitoring Service
+@MainActor
 class CellularMonitoringService: NSObject, ObservableObject {
     @Published var currentCellularMetrics: CellularSecurityMetrics?
     @Published var cellularThreats: [SecurityThreat] = []
@@ -311,7 +312,7 @@ class CellularMonitoringService: NSObject, ObservableObject {
     }
 }
 
-struct SecurityThreat: Identifiable, Codable {
+struct SecurityThreat: Identifiable, Codable, Sendable {
     let id: UUID
     let type: String
     let severity: String
@@ -331,7 +332,7 @@ extension CellularMonitoringService: CLLocationManagerDelegate {
 }
 
 // MARK: - Cellular Security Data Models
-struct CellularTowerInfo: Codable {
+struct CellularTowerInfo: Codable, Sendable {
     let cellID: String?
     let lac: String? // Location Area Code
     let mcc: String? // Mobile Country Code
@@ -341,7 +342,7 @@ struct CellularTowerInfo: Codable {
     let timestamp: Date
 }
 
-struct CellularSecurityMetrics: Codable {
+struct CellularSecurityMetrics: Codable, Sendable {
     let deviceID: String
     let timestamp: Date
     let currentTower: CellularTowerInfo?
@@ -360,7 +361,7 @@ struct CellularSecurityMetrics: Codable {
 }
 
 // MARK: - iPhone Network Data Models
-struct iPhoneNetworkData: Codable {
+struct iPhoneNetworkData: Codable, Sendable {
     let deviceID: String
     let timestamp: Date
     let networkType: String // "WiFi", "Cellular", "None"
@@ -372,14 +373,14 @@ struct iPhoneNetworkData: Codable {
     let location: iPhoneLocation?
 }
 
-struct iPhoneLocation: Codable {
+struct iPhoneLocation: Codable, Sendable {
     let latitude: Double?
     let longitude: Double?
     let accuracy: Double?
     let timestamp: Date
 }
 
-struct iPhoneSecurityAlert: Codable {
+struct iPhoneSecurityAlert: Codable, Sendable {
     let id = UUID()
     let timestamp: Date
     let type: String
@@ -389,7 +390,7 @@ struct iPhoneSecurityAlert: Codable {
 }
 
 // MARK: - Data Models
-struct NetworkAlert: Identifiable, Codable {
+struct NetworkAlert: Identifiable, Codable, Sendable {
     let id = UUID()
     let timestamp: Date
     let type: AlertType
@@ -397,7 +398,7 @@ struct NetworkAlert: Identifiable, Codable {
     let deviceIP: String?
     let processName: String?
     
-    enum AlertType: String, Codable, CaseIterable {
+    enum AlertType: String, Codable, CaseIterable, Sendable {
         case newDevice = "New Device"
         case newConnection = "New Connection"
         case suspicious = "Suspicious Activity"
@@ -435,7 +436,7 @@ struct NetworkAlert: Identifiable, Codable {
     }
 }
 
-struct MacStatus: Codable {
+struct MacStatus: Codable, Sendable {
     let isMonitoring: Bool
     let totalConnections: Int
     let knownDevices: Int
@@ -444,6 +445,7 @@ struct MacStatus: Codable {
 }
 
 // MARK: - Network Service
+@MainActor
 class NetworkMonitorService: ObservableObject {
     @Published var isConnectedToMac = false
     @Published var macStatus: MacStatus?
@@ -1848,6 +1850,7 @@ struct SignalAnalysisCard: View {
 }
 
 // MARK: - Remote Monitoring Service
+@MainActor
 class RemoteMonitoringService: NSObject, ObservableObject {
     @Published var isConnectedToRemoteServer = false
     @Published var connectionStatus = "Disconnected"
