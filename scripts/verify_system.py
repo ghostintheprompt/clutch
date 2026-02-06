@@ -137,11 +137,7 @@ def main():
     print(f"📁 Working directory: {os.getcwd()}")
 
     print("🔍 Cellular Security System Verification")
-    
-    # Change to script directory
-    script_dir = Path(__file__).parent
-    os.chdir(script_dir)
-    
+
     all_checks_passed = True
     
     # Check system components
