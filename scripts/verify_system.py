@@ -48,21 +48,21 @@ def check_python_imports():
 def check_system_components():
     """Verify all system components exist and are properly sized"""
     components = [
-        ('cellular_security.py', 'Main cellular monitoring module'),
-        ('cellular_remote_server.py', 'Remote monitoring server'),
+        ('scripts/cellular_security.py', 'Main cellular monitoring module'),
+        ('scripts/cellular_remote_server.py', 'Remote monitoring server'),
         ('iOS-App/NetworkSecurityMonitor/ContentView.swift', 'iOS app main interface'),
         ('requirements.txt', 'Python dependencies'),
         ('quick_start.sh', 'Quick start script'),
-        ('test_ios_remote_integration.py', 'Integration test script'),
-        ('PRODUCTION_DEPLOYMENT_GUIDE.md', 'Deployment documentation'),
-        ('CLEANUP_COMPLETE.md', 'Workspace cleanup report'),
+        ('scripts/test_ios_remote_integration.py', 'Integration test script'),
+        ('docs/PRODUCTION_DEPLOYMENT_GUIDE.md', 'Deployment documentation'),
+        ('docs/CLEANUP_COMPLETE.md', 'Workspace cleanup report'),
     ]
-    
+
     all_good = True
     for filepath, description in components:
         if not check_file_exists(filepath, description):
             all_good = False
-    
+
     return all_good
 
 def check_ios_app_structure():
@@ -96,36 +96,46 @@ def test_core_imports():
     """Test that core system modules can be imported"""
     try:
         print("🧪 Testing core module imports...")
-        
+
+        # Add scripts directory to path
+        scripts_dir = os.path.join(os.getcwd(), 'scripts')
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+
         # Test cellular_security module
-        sys.path.append('.')
         import cellular_security
         print("✅ cellular_security module imported successfully")
-        
+
         # Test that it has key classes
         if hasattr(cellular_security, 'CellularSecurityMonitor'):
             print("✅ CellularSecurityMonitor class found")
         else:
             print("❌ CellularSecurityMonitor class not found")
             return False
-        
+
         # Test cellular_remote_server module
         import cellular_remote_server
         print("✅ cellular_remote_server module imported successfully")
-        
+
         if hasattr(cellular_remote_server, 'CellularRemoteMonitoringServer'):
             print("✅ CellularRemoteMonitoringServer class found")
         else:
             print("❌ CellularRemoteMonitoringServer class not found")
             return False
-        
+
         return True
-        
+
     except Exception as e:
         print(f"❌ Module import failed: {e}")
         return False
 
 def main():
+    # Change to project root directory (one level up from scripts/)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    os.chdir(project_root)
+    print(f"📁 Working directory: {os.getcwd()}")
+
     print("🔍 Cellular Security System Verification")
     
     # Change to script directory

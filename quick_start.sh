@@ -7,9 +7,9 @@ echo "🛡️  Cellular Security Monitoring System - Quick Start"
 echo "======================================================="
 
 # Check if we're in the right directory
-if [ ! -f "cellular_remote_server.py" ]; then
-    echo "❌ Error: Please run this script from the project directory"
-    echo "   Expected files: cellular_remote_server.py, cellular_security.py"
+if [ ! -f "scripts/cellular_remote_server.py" ]; then
+    echo "❌ Error: Please run this script from the project root directory"
+    echo "   Expected files: scripts/cellular_remote_server.py, scripts/cellular_security.py"
     exit 1
 fi
 
@@ -67,23 +67,23 @@ case $choice in
         echo "   Server will run on ws://localhost:8766"
         echo "   Use this URL in the iOS app settings"
         echo ""
-        python cellular_remote_server.py
+        python3 scripts/cellular_remote_server.py
         ;;
     2)
         echo "💻 Starting local cellular monitoring..."
         echo "   Monitoring macOS/Linux cellular interfaces"
         echo ""
-        python cellular_security.py
+        python3 scripts/cellular_security.py
         ;;
     3)
         echo "🔄 Starting complete system test..."
         echo "   Remote server + iOS integration testing"
         echo ""
-        python test_ios_remote_integration.py
+        python3 scripts/test_ios_remote_integration.py
         ;;
     *)
         echo "❌ Invalid choice. Starting remote server (default)..."
-        python cellular_remote_server.py
+        python3 scripts/cellular_remote_server.py
         ;;
 esac
 
