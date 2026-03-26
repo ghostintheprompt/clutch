@@ -21,28 +21,28 @@ The worst part? Your phone doesn't tell you when this shit is happening. It just
 
 Unlike those fake "security" apps that just show you random numbers, this system:
 
-### 🚨 **Real IMSI Catcher Detection**
+### **Real IMSI Catcher Detection**
 - **Collects actual cellular data** using CoreTelephony (iOS) and system APIs (macOS/Linux)
 - **Machine learning analysis** with IsolationForest and DBSCAN algorithms (not marketing bullshit)
 - **Signal pattern recognition** that identifies suspicious cellular behavior
 - **Technology downgrade alerts** when your connection is forced to weaker encryption
 - **Real-time threat notifications** when surveillance equipment is detected
 
-### 📡 **Professional Signal Analysis**
+### **Professional Signal Analysis**
 - **Signal strength monitoring** that detects artificial signal boosting
 - **Timing advance analysis** that identifies impossible network geometry
 - **Encryption tracking** that alerts when A5/3 → A5/1 → None downgrades occur
 - **RF fingerprinting** that analyzes cellular protocol anomalies
 - **Power consumption analysis** that detects modified hardware behavior
 
-### 🗼 **Coordinated Threat Intelligence**
+### **Coordinated Threat Intelligence**
 - **Multi-device correlation** that shares threat data between iOS devices
 - **Geographic clustering** that maps surveillance equipment locations
 - **Remote monitoring server** that coordinates threat detection across teams
 - **WebSocket infrastructure** for real-time threat sharing
 - **Historical analysis** that tracks surveillance patterns over time
 
-### 🔐 **No Permission Bullshit**
+### **No Permission Bullshit**
 - **CoreTelephony integration** that accesses real cellular hardware data
 - **Location services** for geo-mapping threats (with your explicit permission)
 - **Full system access** because detecting surveillance requires seeing everything
@@ -61,19 +61,19 @@ We built this because journalists and activists deserve the same surveillance de
 
 ## Who This Is For
 
-### 📰 **Journalists & Investigators**
+### **Journalists & Investigators**
 - **Protest coverage** where IMSI catchers are commonly deployed
 - **Source protection** in sensitive reporting environments
 - **Cross-border reporting** in countries with active surveillance programs
 - **Investigative work** near government facilities or corporate headquarters
 
-### 🏴 **Activists & Organizers**
+### **Activists & Organizers**
 - **Demonstration security** for detecting law enforcement surveillance
 - **Meeting protection** to ensure private organizing spaces stay private
 - **Travel security** when crossing borders or entering surveilled areas
 - **Community defense** against corporate or state surveillance programs
 
-### 🔒 **Security Professionals**
+### **Security Professionals**
 - **Penetration testing** to verify cellular security in client environments
 - **Red team operations** that need to detect blue team monitoring
 - **Corporate security** for protecting executive communications
@@ -135,7 +135,7 @@ open iOS-App/NetworkSecurityMonitor.xcodeproj
 ## What You'll See When It Detects Surveillance
 
 ```
-🚨 IMSI CATCHER DETECTED!
+IMSI CATCHER DETECTED!
 
 Threat Type: IMSI_CATCHER_SUSPECTED
 Severity: HIGH
