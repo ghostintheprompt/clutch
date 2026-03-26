@@ -1,4 +1,4 @@
-# Cellular Security Monitor 🛡️
+# Cellular Security Monitor 
 
 **Stop letting surveillance weasels spy on your cellular traffic.**
 
