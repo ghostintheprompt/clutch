@@ -7,11 +7,17 @@ Advanced algorithms for detecting sophisticated cellular attacks and security th
 import json
 import time
 import math
+import os
+import subprocess
+import socket
+import platform
+import hashlib
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Set, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
 from collections import defaultdict, deque
+from pathlib import Path
 import threading
 import asyncio
 from scipy import stats
@@ -660,26 +666,453 @@ class CellularSecurityVisualizer:
         print(f"Analysis plots saved to {filename}")
 
 
+# ── Active Defense ────────────────────────────────────────────────────────────
+
+class ActiveBlockingModule:
+    """
+    Automated firewall enforcement for unauthorized network connections.
+
+    On Linux: inserts DROP rules via iptables or nftables.
+    On macOS: adds block rules via pfctl anchor 'clutch'.
+
+    All block/unblock actions are written to forensics/blocks/block_audit.json
+    for post-incident review. Use dry_run=True to validate posture without
+    modifying firewall state.
+    """
+
+    _FORENSICS_DIR = Path("forensics/blocks")
+
+    def __init__(self, dry_run: bool = False):
+        self.dry_run = dry_run
+        self._os = platform.system()
+        self._blocked: Set[str] = set()
+        self._audit: List[Dict] = []
+        self._FORENSICS_DIR.mkdir(parents=True, exist_ok=True)
+
+    def null_route_ip(self, ip_address: str, reason: str = "unauthorized") -> bool:
+        """Insert a DROP rule for ip_address. Returns True on success."""
+        if ip_address in self._blocked:
+            return True
+        try:
+            socket.inet_pton(socket.AF_INET, ip_address)
+        except OSError:
+            try:
+                socket.inet_pton(socket.AF_INET6, ip_address)
+            except OSError:
+                return False
+
+        success = self._apply_rule(ip_address, action="add")
+        if success or self.dry_run:
+            self._blocked.add(ip_address)
+            self._log_action("BLOCK", ip_address, reason)
+        return success or self.dry_run
+
+    def remove_block(self, ip_address: str) -> bool:
+        """Remove an existing DROP rule."""
+        if ip_address not in self._blocked:
+            return False
+        success = self._apply_rule(ip_address, action="remove")
+        if success or self.dry_run:
+            self._blocked.discard(ip_address)
+            self._log_action("UNBLOCK", ip_address, "manual_removal")
+        return success or self.dry_run
+
+    def list_blocked(self) -> Set[str]:
+        return self._blocked.copy()
+
+    def _apply_rule(self, ip: str, action: str) -> bool:
+        if self.dry_run:
+            return True
+        if self._os == "Linux":
+            return self._iptables(ip, action)
+        if self._os == "Darwin":
+            return self._pfctl(ip, action)
+        return False
+
+    def _iptables(self, ip: str, action: str) -> bool:
+        use_nft = self._cmd_available("nft")
+        try:
+            if use_nft:
+                if action == "add":
+                    cmd = ["nft", "add", "rule", "inet", "filter", "input",
+                           "ip", "saddr", ip, "drop"]
+                else:
+                    # nftables rule deletion requires handle; use iptables fallback
+                    cmd = ["iptables", "-D", "INPUT", "-s", ip, "-j", "DROP"]
+            else:
+                flag = "-I" if action == "add" else "-D"
+                cmd = ["iptables", flag, "INPUT", "-s", ip, "-j", "DROP"]
+            subprocess.run(cmd, check=True, capture_output=True, timeout=10)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+
+    def _pfctl(self, ip: str, action: str) -> bool:
+        try:
+            if action == "add":
+                rule = f"block in quick from {ip} to any\n"
+                proc = subprocess.run(
+                    ["pfctl", "-a", "clutch", "-f", "-"],
+                    input=rule.encode(), check=True, capture_output=True, timeout=10
+                )
+            else:
+                subprocess.run(
+                    ["pfctl", "-a", "clutch", "-F", "rules"],
+                    check=True, capture_output=True, timeout=10
+                )
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+
+    def _log_action(self, action: str, ip: str, reason: str):
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "action": action,
+            "ip": ip,
+            "reason": reason,
+            "method": "nft/iptables" if self._os == "Linux" else "pfctl",
+            "dry_run": self.dry_run,
+        }
+        self._audit.append(entry)
+        try:
+            with open(self._FORENSICS_DIR / "block_audit.json", "w") as f:
+                json.dump(self._audit, f, indent=2)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _cmd_available(cmd: str) -> bool:
+        try:
+            subprocess.run([cmd, "--version"], capture_output=True, timeout=5)
+            return True
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+
+
+class CellularGeofencing:
+    """
+    Regional lock — validates every observed tower MCC/MNC against a whitelist
+    and optionally checks device GPS coordinates against a bounding box.
+
+    Triggers CRITICAL alert if connection is made to any operator outside the
+    designated safe zone. Useful in high-risk environments where only specific
+    domestic carriers should ever be seen.
+
+    Config keys:
+        geofencing.enabled       — bool
+        geofencing.whitelist     — [{mcc, mnc, name}]
+        geofencing.bounding_box  — {lat_min, lat_max, lon_min, lon_max}
+    """
+
+    def __init__(self, config: Dict):
+        geo = config.get("geofencing", {})
+        self.enabled: bool = geo.get("enabled", False)
+        self._safe_operators: Set[str] = set()
+        self._bbox: Optional[Dict] = geo.get("bounding_box")
+        for entry in geo.get("whitelist", []):
+            mcc, mnc = entry.get("mcc", ""), entry.get("mnc", "")
+            if mcc and mnc:
+                self._safe_operators.add(f"{mcc}-{mnc}")
+
+    def check_tower(self, tower, lat: Optional[float] = None,
+                    lon: Optional[float] = None) -> Optional[Any]:
+        """Return a SecurityThreat if the tower violates the geofence, else None."""
+        if not self.enabled:
+            return None
+
+        key = f"{getattr(tower, 'mcc', '')}-{getattr(tower, 'mnc', '')}"
+
+        if self._safe_operators and key not in self._safe_operators:
+            from cellular_security import SecurityThreat
+            return SecurityThreat(
+                threat_id=f"GEOFENCE_{int(time.time())}",
+                threat_type="GEOFENCE_OPERATOR_VIOLATION",
+                severity="critical",
+                timestamp=datetime.now(),
+                description=f"Tower operator {key} not in safe-zone whitelist",
+                evidence={
+                    "observed_operator": key,
+                    "whitelisted_operators": list(self._safe_operators),
+                    "cell_id": getattr(tower, "cell_id", "unknown"),
+                },
+                confidence=0.95,
+                mitigation_advice=(
+                    "Connection to unrecognized cellular operator. "
+                    "Disable cellular data and verify physical location immediately."
+                ),
+            )
+
+        if self._bbox and lat is not None and lon is not None:
+            bb = self._bbox
+            if not (bb["lat_min"] <= lat <= bb["lat_max"]
+                    and bb["lon_min"] <= lon <= bb["lon_max"]):
+                from cellular_security import SecurityThreat
+                return SecurityThreat(
+                    threat_id=f"GEOFENCE_GPS_{int(time.time())}",
+                    threat_type="GEOFENCE_GPS_VIOLATION",
+                    severity="critical",
+                    timestamp=datetime.now(),
+                    description=(
+                        f"Device at ({lat:.4f}, {lon:.4f}) is outside designated safe zone"
+                    ),
+                    evidence={"lat": lat, "lon": lon, "safe_bbox": bb},
+                    confidence=0.98,
+                    mitigation_advice=(
+                        "Device has left the designated safe zone. "
+                        "Review operational security posture."
+                    ),
+                )
+
+        return None
+
+
+class TriggeredPCAPCapture:
+    """
+    Starts a tcpdump session when a high/critical security rule fires.
+
+    Captures are stored in forensics/pcap/<threat_id>_<timestamp>.pcap
+    and automatically terminated after capture_seconds. Non-blocking —
+    returns the expected PCAP path immediately; capture runs in background.
+
+    Requires tcpdump on PATH. Fails silently if unavailable (degrades gracefully).
+    """
+
+    _FORENSICS_DIR = Path("forensics/pcap")
+    _MAX_CONCURRENT = 10
+    _DEFAULT_SECONDS = 30
+
+    def __init__(self, interface: Optional[str] = None, capture_seconds: int = _DEFAULT_SECONDS):
+        self.interface = interface or self._detect_interface()
+        self.capture_seconds = capture_seconds
+        self._active: Dict[str, subprocess.Popen] = {}
+        self._FORENSICS_DIR.mkdir(parents=True, exist_ok=True)
+
+    def trigger(self, threat, ip_filter: Optional[str] = None) -> Optional[Path]:
+        """
+        Kick off a tcpdump capture associated with threat.
+        Returns the PCAP file path (may not be complete yet).
+        """
+        if len(self._active) >= self._MAX_CONCURRENT:
+            return None
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{threat.threat_id}_{ts}.pcap"
+        filepath = self._FORENSICS_DIR / filename
+
+        cmd = [
+            "tcpdump",
+            "-i", self.interface,
+            "-w", str(filepath),
+            "--immediate-mode",
+        ]
+        if ip_filter:
+            cmd += ["host", ip_filter]
+
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            self._active[threat.threat_id] = proc
+            threading.Timer(
+                self.capture_seconds + 2, self._stop_capture, args=[threat.threat_id]
+            ).start()
+            return filepath
+        except FileNotFoundError:
+            # tcpdump not installed
+            return None
+
+    def _stop_capture(self, threat_id: str):
+        proc = self._active.pop(threat_id, None)
+        if proc and proc.poll() is None:
+            proc.terminate()
+
+    def _detect_interface(self) -> str:
+        if platform.system() == "Darwin":
+            return "en0"
+        try:
+            out = subprocess.run(
+                ["ip", "route", "show", "default"],
+                capture_output=True, text=True, timeout=5
+            ).stdout.split()
+            if "dev" in out:
+                return out[out.index("dev") + 1]
+        except Exception:
+            pass
+        return "eth0"
+
+
+class IncidentReporter:
+    """
+    Compiles a standardized JSON (+ optional PDF) incident report from
+    collected threats and tower observations.
+
+    The report body is SHA-256 hashed before writing, providing a
+    tamper-evident integrity marker for post-incident review.
+
+    Output: forensics/reports/IR-<timestamp>.json
+            forensics/reports/IR-<timestamp>.pdf  (if reportlab is installed)
+    """
+
+    _FORENSICS_DIR = Path("forensics/reports")
+
+    def __init__(self):
+        self._FORENSICS_DIR.mkdir(parents=True, exist_ok=True)
+
+    def generate(self, threats: List, measurements: List,
+                 extra_context: Optional[Dict] = None) -> Path:
+        report_id = f"IR-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+        severity_counts: Dict[str, int] = defaultdict(int)
+        for t in threats:
+            severity_counts[t.severity] += 1
+
+        monitoring_seconds = 0
+        if len(measurements) >= 2:
+            monitoring_seconds = (
+                measurements[-1].timestamp - measurements[0].timestamp
+            ).total_seconds()
+
+        report = {
+            "report_id": report_id,
+            "generated_at": datetime.now().isoformat(),
+            "system": {
+                "hostname": platform.node(),
+                "platform": platform.system(),
+                "python_version": platform.python_version(),
+            },
+            "summary": {
+                "total_threats": len(threats),
+                "severity_breakdown": dict(severity_counts),
+                "monitoring_duration_seconds": monitoring_seconds,
+                "measurements_collected": len(measurements),
+            },
+            "threats": [
+                {
+                    "threat_id": t.threat_id,
+                    "type": t.threat_type,
+                    "severity": t.severity,
+                    "timestamp": t.timestamp.isoformat(),
+                    "confidence": t.confidence,
+                    "description": t.description,
+                    "evidence": t.evidence,
+                    "mitigation": t.mitigation_advice,
+                }
+                for t in sorted(threats, key=lambda x: x.timestamp)
+            ],
+            "tower_observations": self._summarize_towers(measurements),
+            "extra_context": extra_context or {},
+        }
+
+        # Integrity hash — computed over canonically sorted JSON body
+        body_bytes = json.dumps(report, sort_keys=True).encode()
+        report["integrity_hash"] = hashlib.sha256(body_bytes).hexdigest()
+
+        json_path = self._FORENSICS_DIR / f"{report_id}.json"
+        with open(json_path, "w") as f:
+            json.dump(report, f, indent=2)
+
+        self._try_pdf(report, self._FORENSICS_DIR / f"{report_id}.pdf")
+
+        return json_path
+
+    def _summarize_towers(self, measurements: List) -> List[Dict]:
+        seen: Dict[str, Dict] = {}
+        for m in measurements:
+            cid = getattr(getattr(m, "tower", None), "cell_id", "unknown")
+            if cid not in seen:
+                tower = getattr(m, "tower", None)
+                seen[cid] = {
+                    "cell_id": cid,
+                    "technology": getattr(tower, "technology", "unknown"),
+                    "mcc": getattr(tower, "mcc", "unknown"),
+                    "mnc": getattr(tower, "mnc", "unknown"),
+                    "first_seen": m.timestamp.isoformat(),
+                    "last_seen": m.timestamp.isoformat(),
+                    "observation_count": 1,
+                }
+            else:
+                seen[cid]["last_seen"] = m.timestamp.isoformat()
+                seen[cid]["observation_count"] += 1
+        return list(seen.values())
+
+    def _try_pdf(self, report: Dict, path: Path):
+        try:
+            from reportlab.lib.pagesizes import letter
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet
+
+            doc = SimpleDocTemplate(str(path), pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = [
+                Paragraph(f"Clutch Incident Report: {report['report_id']}", styles["Title"]),
+                Spacer(1, 12),
+                Paragraph(f"Generated: {report['generated_at']}", styles["Normal"]),
+                Paragraph(
+                    f"Threats: {report['summary']['total_threats']} | "
+                    f"Duration: {report['summary']['monitoring_duration_seconds']:.0f}s",
+                    styles["Normal"],
+                ),
+                Spacer(1, 12),
+                Paragraph("Threat Details", styles["Heading1"]),
+            ]
+            for threat in report["threats"]:
+                story.append(
+                    Paragraph(
+                        f"[{threat['severity'].upper()}] {threat['type']}",
+                        styles["Heading2"],
+                    )
+                )
+                story.append(Paragraph(threat["description"], styles["Normal"]))
+                story.append(
+                    Paragraph(
+                        f"Confidence: {threat['confidence']:.0%} | Mitigation: {threat['mitigation']}",
+                        styles["Normal"],
+                    )
+                )
+                story.append(Spacer(1, 6))
+            story.append(Paragraph(f"Integrity Hash: {report['integrity_hash']}", styles["Normal"]))
+            doc.build(story)
+        except ImportError:
+            pass  # reportlab not installed — JSON report is sufficient
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 class EnhancedCellularSecurityMonitor(CellularSecurityMonitor):
     """Enhanced cellular security monitor with advanced detection capabilities."""
     
     def __init__(self, config_file: str = "enhanced_cellular_security_config.json"):
         super().__init__(config_file)
-        
-        # Initialize advanced detector
+
+        # Core detection
         self.advanced_detector = AdvancedIMSICatcherDetector(self.config)
-        
-        # Initialize visualizer
         self.visualizer = CellularSecurityVisualizer()
-        
-        # Enhanced measurement storage
         self.advanced_measurements: List[AdvancedCellularMetrics] = []
-        
-        # Real-time threat monitoring
+
+        # Active defense modules
+        self.active_blocker = ActiveBlockingModule(
+            dry_run=self.config.get("active_blocking", {}).get("dry_run", True)
+        )
+        self.geofencing = CellularGeofencing(self.config)
+        self.pcap_capture = TriggeredPCAPCapture(
+            interface=self.config.get("pcap", {}).get("interface"),
+            capture_seconds=self.config.get("pcap", {}).get("capture_seconds", 30),
+        )
+        self.incident_reporter = IncidentReporter()
+
         self.threat_monitor_thread = None
         self.monitoring_active = False
-        
-        print("🔬 Enhanced Cellular Security Monitor initialized")
+
+        print("[*] Enhanced Cellular Security Monitor initialized")
+        if self.geofencing.enabled:
+            print("[+] Geofencing: ACTIVE")
+        if not self.active_blocker.dry_run:
+            print("[+] Active blocking: LIVE (firewall rules will be inserted)")
+        else:
+            print("[~] Active blocking: DRY RUN (no firewall changes)")
     
     def get_advanced_cellular_info(self) -> Optional[AdvancedCellularMetrics]:
         """Get advanced cellular metrics."""
@@ -743,8 +1176,23 @@ class EnhancedCellularSecurityMonitor(CellularSecurityMonitor):
                     
                     # Combine and display threats
                     all_threats = basic_threats + advanced_threats
+
+                    # Geofencing check
+                    geo_threat = self.geofencing.check_tower(metrics.tower)
+                    if geo_threat:
+                        all_threats.append(geo_threat)
+
                     for threat in all_threats:
                         self._handle_threat_notification(threat)
+                        # Trigger PCAP on high/critical threats
+                        if threat.severity in ("high", "critical"):
+                            self.pcap_capture.trigger(threat)
+                        # Active blocking: null-route any IP cited in evidence
+                        if not self.active_blocker.dry_run:
+                            for key in ("ip", "source_ip", "remote_ip"):
+                                ip = threat.evidence.get(key)
+                                if ip:
+                                    self.active_blocker.null_route_ip(ip, reason=threat.threat_type)
                     
                     # Update visualizations periodically
                     if len(self.advanced_measurements) % 10 == 0:
@@ -756,9 +1204,17 @@ class EnhancedCellularSecurityMonitor(CellularSecurityMonitor):
                 time.sleep(self.config['monitor_interval'])
                 
         except KeyboardInterrupt:
-            print("\n\n🛑 Enhanced Cellular Security Monitor stopped")
+            print("\n\n[!] Enhanced Cellular Security Monitor stopped")
             self.monitoring_active = False
             self.generate_enhanced_report()
+            # Write incident report on clean shutdown
+            if self.advanced_measurements:
+                report_path = self.incident_reporter.generate(
+                    self.security_threats,
+                    self.advanced_measurements,
+                    extra_context={"blocked_ips": list(self.active_blocker.list_blocked())},
+                )
+                print(f"[+] Incident report: {report_path}")
     
     def _update_visualizations(self):
         """Update real-time visualizations."""
