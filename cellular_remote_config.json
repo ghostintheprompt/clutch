@@ -5,9 +5,49 @@
     "threat_correlation": true,
     "auto_export": true
   },
+
   "notifications": {
     "email_alerts": false,
     "slack_webhook": "",
     "telegram_bot_token": ""
+  },
+
+  "active_blocking": {
+    "enabled": false,
+    "dry_run": true,
+    "comment": "Set dry_run:false to insert live firewall rules. Requires root/sudo."
+  },
+
+  "geofencing": {
+    "enabled": false,
+    "comment": "Set enabled:true and populate whitelist to lock to specific operators.",
+    "whitelist": [
+      {"mcc": "310", "mnc": "260", "name": "T-Mobile US"},
+      {"mcc": "310", "mnc": "410", "name": "AT&T"},
+      {"mcc": "311", "mnc": "480", "name": "Verizon"},
+      {"mcc": "312", "mnc": "250", "name": "US Cellular"}
+    ],
+    "bounding_box": {
+      "comment": "Optional GPS safe zone. Remove or set enabled:false to disable.",
+      "lat_min": 37.70,
+      "lat_max": 37.85,
+      "lon_min": -122.52,
+      "lon_max": -122.35
+    }
+  },
+
+  "pcap": {
+    "enabled": true,
+    "interface": null,
+    "comment": "interface:null = auto-detect. Requires tcpdump on PATH.",
+    "capture_seconds": 30,
+    "max_concurrent_captures": 10,
+    "output_dir": "forensics/pcap"
+  },
+
+  "incident_reporting": {
+    "output_dir": "forensics/reports",
+    "generate_pdf": false,
+    "comment": "generate_pdf:true requires 'pip install reportlab'"
   }
 }
