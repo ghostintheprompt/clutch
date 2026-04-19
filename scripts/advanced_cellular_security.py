@@ -1283,10 +1283,34 @@ class EnhancedCellularSecurityMonitor(CellularSecurityMonitor):
         print("="*60)
 
 
+def _check_for_updates():
+    """Check GitHub releases for a newer version. Silent if up to date."""
+    import threading, time as _time
+    CURRENT_VERSION = "v1.0.0"
+    RELEASES_URL = "https://api.github.com/repos/ghostintheprompt/clutch/releases/latest"
+
+    def _check():
+        _time.sleep(3)
+        try:
+            resp = requests.get(RELEASES_URL, timeout=5,
+                                headers={"Accept": "application/vnd.github+json"})
+            if resp.status_code == 200:
+                latest = resp.json().get("tag_name", "")
+                if latest and latest != CURRENT_VERSION:
+                    print(f"\n[*] Update available: {latest} "
+                          f"(https://github.com/ghostintheprompt/clutch/releases)")
+        except Exception:
+            pass  # Network unavailable — skip silently
+
+    threading.Thread(target=_check, daemon=True).start()
+
+
 def main():
     """Main function for enhanced cellular security monitoring."""
     import argparse
-    
+
+    _check_for_updates()
+
     parser = argparse.ArgumentParser(description="Enhanced Cellular Security Monitor")
     parser.add_argument('--config', default='enhanced_cellular_security_config.json', help='Config file')
     parser.add_argument('--interval', type=int, help='Monitoring interval in seconds')

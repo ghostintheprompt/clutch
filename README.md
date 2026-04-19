@@ -1,6 +1,19 @@
-# Clutch
+<p align="center">
+  <img src="docs/icon.png" width="220" alt="Clutch">
+</p>
 
-Cellular security monitor for iOS, macOS, and Linux. Detects IMSI catchers, signal downgrades, and cellular surveillance equipment using machine learning and coordinated threat intelligence.
+<h1 align="center">Clutch</h1>
+<p align="center">Cellular security monitor for iOS, macOS, and Linux</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/platform-iOS%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
+  <a href="https://github.com/ghostintheprompt/clutch/releases"><img src="https://img.shields.io/github/v/release/ghostintheprompt/clutch" alt="Release"></a>
+</p>
+
+---
+
+Clutch detects IMSI catchers, signal downgrades, and cellular surveillance equipment using machine learning and coordinated threat intelligence.
 
 Built for journalists, activists, researchers, and security professionals who cannot always go dark — and need better information than their phone currently gives them.
 
@@ -17,8 +30,6 @@ The advice is usually "leave your phone at home." That advice fails in the field
 ---
 
 ## What It Detects
-
-Cell-site simulators betray themselves through physical and protocol signatures that legitimate towers do not produce:
 
 | Signal | What It Means |
 |---|---|
@@ -70,17 +81,26 @@ Mitigation suggestions are defaults. Sensitivity thresholds, alert behavior, and
 
 ---
 
-## Quick Start
+## Install
+
+### Download
+
+[Latest release](https://github.com/ghostintheprompt/clutch/releases) — Python backend as a zip archive.
+
+### Homebrew
+
+```bash
+brew install --cask ghostintheprompt/clutch/clutch
+```
+
+### Build from source
 
 ```bash
 git clone https://github.com/ghostintheprompt/clutch
 cd clutch
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
 ./quick_start.sh
-
-# Options:
-# 1) Remote Server Only (for iOS app connection)
-# 2) Local Monitoring Only (macOS/Linux)
-# 3) Complete System (server + iOS integration)
 ```
 
 **iOS setup:**
@@ -114,8 +134,8 @@ open iOS-App/NetworkSecurityMonitor.xcodeproj
 clutch/
 ├── iOS-App/                    # Swift CoreTelephony monitoring app
 │   └── NetworkSecurityMonitor/ # 2,100+ lines, real cellular hardware access
-├── scripts/                    # Python detection backend (1,400+ lines)
-├── docs/                       # Deployment guides and technical documentation
+├── scripts/                    # Python detection backend
+├── docs/                       # Technical documentation
 ├── quick_start.sh              # Deployment entry point
 ├── requirements.txt            # Python dependencies
 └── cellular_remote_config.json # Remote coordination configuration
@@ -123,11 +143,11 @@ clutch/
 
 ---
 
-## Privacy & Data Handling
+## Privacy
 
 - All threat detection runs locally on your device
 - No telemetry, no analytics, no user tracking
-- Remote sharing is opt-in and configurable — nothing leaves the device unless you set it up
+- Remote sharing is opt-in and configurable — nothing leaves the device unless you configure it
 - WebSocket connections support optional SSL/TLS
 - No content interception — detects surveillance, does not conduct it
 
@@ -151,12 +171,8 @@ MIT License.
 
 ---
 
-## Read More
-
-Full context, IMSI catcher history, and operational philosophy: [ghostintheprompt.com/articles/clutch](https://ghostintheprompt.com/articles/clutch)
+Full context and operational philosophy: [ghostintheprompt.com/articles/clutch](https://ghostintheprompt.com/articles/clutch)
 
 ---
 
-**github.com/ghostintheprompt/clutch**
-
-For people who cannot always go dark — and need better information than their phone currently provides.
+<sub>Built by <a href="https://mdrn.app">MDRN Corp</a> — <strong>github.com/ghostintheprompt/clutch</strong></sub>

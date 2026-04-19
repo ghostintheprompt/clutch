@@ -78,3 +78,6 @@ build/
 
 # Documentation build files
 docs/_build/
+
+# Claude Code
+.claude/settings.local.json
