@@ -1,9 +1,7 @@
-<p align="center">
-  <img src="docs/icon.png" width="220" alt="Clutch">
-</p>
+<img src="docs/icon.png" width="200">
 
-<h1 align="center">Clutch</h1>
-<p align="center">Cellular security monitor for iOS, macOS, and Linux</p>
+# Clutch
+Cellular security monitor for iOS, macOS, and Linux — v1.0
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
