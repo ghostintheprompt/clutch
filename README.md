@@ -1,4 +1,6 @@
-<img src="docs/icon.png" width="200">
+<p align="center">
+  <img src="docs/icon.png" width="520">
+</p>
 
 # Clutch
 Cellular security monitor for iOS, macOS, and Linux — v1.0
