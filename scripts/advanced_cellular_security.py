@@ -780,6 +780,36 @@ class ActiveBlockingModule:
         except OSError:
             pass
 
+    def trigger_defense(self, threat, target_ip: Optional[str] = None) -> bool:
+        """
+        Evaluate a threat and execute automated firewall responses.
+        Returns True if an active block was applied.
+        """
+        if self.dry_run:
+            logger.info(f"🛡️ [DRY RUN] Would evaluate block for {threat.threat_type}")
+            return False
+            
+        # Automated Null-Routing / Kill-Switch for High-Risk Threats
+        high_risk_threats = {"IMSI_CATCHER_SUSPECTED", "POTENTIAL_JAMMING", "TECHNOLOGY_DOWNGRADE", "SIGNAL_MANIPULATION"}
+        
+        if threat.threat_type in high_risk_threats and getattr(threat, "confidence", 1.0) >= 0.90:
+            logger.critical(f"🛑 [ACTIVE DEFENSE] HIGH-RISK THREAT CONFIRMED: {threat.threat_type}")
+            
+            if not target_ip:
+                logger.critical(f"🛑 [ACTIVE DEFENSE] ENACTING KILL-SWITCH: Null-routing ALL default traffic.")
+                self.null_route_ip("0.0.0.0/0", reason="Kill-Switch Triggered")
+                return True
+            else:
+                logger.critical(f"🛑 [ACTIVE DEFENSE] Null-routing hostile IP: {target_ip}")
+                self.null_route_ip(target_ip, reason=threat.threat_type)
+                return True
+
+        if target_ip is None:
+            logger.warning(f"🛡️ [ACTIVE DEFENSE] No target IP provided for {threat.threat_type}. Cannot block.")
+            return False
+            
+        return False
+
     @staticmethod
     def _cmd_available(cmd: str) -> bool:
         try:

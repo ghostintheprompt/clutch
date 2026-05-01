@@ -32,6 +32,7 @@ def check_python_imports():
         ('asyncio', 'Async operations'),
         ('json', 'JSON processing'),
         ('logging', 'Logging system'),
+        ('cryptography', 'OPSEC Encryption (AES-256)'),
     ]
     
     all_good = True
@@ -50,12 +51,16 @@ def check_system_components():
     components = [
         ('scripts/cellular_security.py', 'Main cellular monitoring module'),
         ('scripts/cellular_remote_server.py', 'Remote monitoring server'),
+        ('scripts/opsec_encryption.py', 'OPSEC E2EE Telemetry Module'),
+        ('scripts/sdr_passive_verification.py', 'SDR Passive Verification Stub'),
+        ('scripts/sigint_heatmap.py', 'SIGINT Geographic Heatmap Generator'),
+        ('scripts/clutch_ctl.py', 'Unified C2 Control Suite'),
         ('iOS-App/NetworkSecurityMonitor/ContentView.swift', 'iOS app main interface'),
         ('requirements.txt', 'Python dependencies'),
         ('quick_start.sh', 'Quick start script'),
         ('scripts/test_ios_remote_integration.py', 'Integration test script'),
-        ('docs/PRODUCTION_DEPLOYMENT_GUIDE.md', 'Deployment documentation'),
-        ('docs/CLEANUP_COMPLETE.md', 'Workspace cleanup report'),
+        ('scripts/test_cellular_security.py', 'Cellular security unit tests'),
+        ('scripts/test_ios_connection.py', 'iOS WebSocket connection test'),
     ]
 
     all_good = True
@@ -85,6 +90,16 @@ def check_ios_app_structure():
         size = os.path.getsize(contentview_path)
         lines = sum(1 for line in open(contentview_path))
         print(f"   📊 ContentView.swift: {lines:,} lines of code")
+        
+        # Check for actionable CoreTelephony private APIs
+        with open(contentview_path, 'r') as f:
+            content = f.read()
+            if "CTGetSignalStrength" in content and "_CTServerConnectionGetCellularDataIsEnabled" in content:
+                print(f"   ✅ Actionable CoreTelephony API bindings detected")
+            else:
+                print(f"   ⚠️  Mocked implementation detected, missing private APIs")
+                all_good = False
+        
         if lines > 2000:
             print(f"   ✅ Substantial iOS implementation detected")
         else:
@@ -167,7 +182,8 @@ def main():
         print("✅ System is ready for deployment")
         print("✅ All components are properly integrated")
         print("✅ Dependencies are available")
-        print("✅ iOS app is complete")
+        print("✅ iOS app is complete and uses actionable APIs")
+        print("✅ Ghost-Protocol extensions (OPSEC, SDR, SIGINT Heatmap) are present")
         print("")
         print("🚀 Next steps:")
         print("   1. Run: ./quick_start.sh")
@@ -183,3 +199,4 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
+

@@ -1,371 +1,367 @@
 #!/usr/bin/env python3
 """
-Enhanced Cellular Security Remote Monitoring Server
-Receives real-time cellular threat data from iOS devices and provides remote monitoring capabilities.
+Cellular Remote Monitoring Server
+Coordinates threat intelligence across multiple iOS devices
 """
 
 import asyncio
 import websockets
 import json
-import time
-import ssl
-from datetime import datetime, timedelta
-from typing import Dict, List, Set, Optional
-from dataclasses import dataclass, asdict
 import logging
-import uuid
-from pathlib import Path
 import sqlite3
-import threading
-import hashlib
-import hmac
-import base64
+import os
+from datetime import datetime, timedelta
+from collections import defaultdict
+from typing import Dict, List, Set, Optional
 
-# Configure logging
+try:
+    from opsec_encryption import TelemetryEncryptor
+    OPSEC_AVAILABLE = True
+except ImportError:
+    OPSEC_AVAILABLE = False
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('cellular_remote_monitoring.log'),
-        logging.StreamHandler()
-    ]
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('RemoteMonitorServer')
 
-@dataclass
 class RemoteCellularThreat:
-    """Remote cellular threat data from iOS device."""
-    device_id: str
-    threat_id: str
-    threat_type: str
-    severity: str
-    timestamp: datetime
-    location: Optional[Dict] = None
-    cellular_data: Optional[Dict] = None
-    description: str = ""
-    confidence: float = 0.0
-    
-    def to_dict(self):
-        data = asdict(self)
-        data['timestamp'] = self.timestamp.isoformat()
-        return data
+    def __init__(self, data: Dict):
+        self.threat_id = data.get('threat_id', '')
+        self.device_id = data.get('device_id', '')
+        self.threat_type = data.get('threat_type', '')
+        self.severity = data.get('severity', 'low')
+        self.description = data.get('description', '')
+        self.timestamp = datetime.fromisoformat(data.get('timestamp', datetime.now().isoformat()))
+        self.location = data.get('location')
+        self.cellular_data = data.get('cellular_data')
 
 class CellularRemoteMonitoringServer:
-    """Remote monitoring server for cellular security threats."""
-    
-    def __init__(self, host='0.0.0.0', port=8766, use_ssl=False):
-        self.host = host
-        self.port = port
-        self.use_ssl = use_ssl
-        self.connected_devices: Dict[str, Dict] = {}
-        self.threat_history: List[RemoteCellularThreat] = []
-        self.monitoring_rules: Dict[str, Dict] = {}
+    def __init__(self, config_path: str = "cellular_remote_config.json"):
+        self.config = self._load_config(config_path)
+        self.connected_devices: Dict[str, websockets.WebSocketServerProtocol] = {}
+        self.device_info: Dict[str, Dict] = {}
+        self.active_threats: List[RemoteCellularThreat] = []
+        self.db_path = self.config.get('database', 'cellular_remote_monitoring.db')
+        self.api_keys = set(self.config.get('api_keys', []))
         
-        # Initialize database
-        self.init_database()
+        # Threat correlation
+        self.threat_window = timedelta(seconds=self.config.get('threat_correlation_window', 300))
+        self.location_threshold_meters = self.config.get('location_correlation_meters', 1000)
         
-        # Load configuration
-        self.load_config()
+        # Load rules
+        self.monitoring_rules = self._load_rules()
+        self._setup_database()
         
-        # Authentication
-        self.api_keys: Set[str] = set()
-        self.load_api_keys()
+        # OPSEC Encryption Setup
+        self.encryptor = None
+        if OPSEC_AVAILABLE:
+            master_key = self.config.get("opsec_master_key")
+            self.encryptor = TelemetryEncryptor(base64_key=master_key)
+            if self.encryptor.enabled and master_key is None:
+                 import base64
+                 logger.info(f"NEW OPSEC KEY (Add to iOS config): {base64.b64encode(self.encryptor.key).decode()}")
+
+    def _load_config(self, path: str) -> Dict:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Error loading config: {e}")
         
-    def init_database(self):
-        """Initialize SQLite database for persistent storage."""
-        self.db_path = "cellular_remote_monitoring.db"
+        # Default config
+        import secrets
+        default_key = secrets.token_hex(16)
+        default_config = {
+            "host": "0.0.0.0",
+            "port": 8766,
+            "ssl": False,
+            "database": "cellular_remote_monitoring.db",
+            "api_keys": [default_key],
+            "threat_correlation_window": 300,
+            "location_correlation_meters": 1000,
+            "coordinated_attack_threshold": 3,
+            "opsec_master_key": None
+        }
+        
+        try:
+            with open(path, 'w') as f:
+                json.dump(default_config, f, indent=4)
+            logger.info(f"Created default config. API Key: {default_key}")
+        except Exception as e:
+            logger.error(f"Could not save default config: {e}")
+            
+        return default_config
+
+    def _load_rules(self) -> Dict:
+        return {
+            "high_priority_threats": [
+                "IMSI_CATCHER_SUSPECTED",
+                "TECHNOLOGY_DOWNGRADE",
+                "CELLULAR_JAMMING"
+            ],
+            "threat_correlation": True,
+            "alert_thresholds": {
+                "high": 1,
+                "medium": 3,
+                "low": 5
+            }
+        }
+
+    def _setup_database(self):
+        """Initialize SQLite database for persistent threat storage."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # Create tables
+        # Threats table
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS cellular_threats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                device_id TEXT NOT NULL,
-                threat_id TEXT UNIQUE NOT NULL,
-                threat_type TEXT NOT NULL,
-                severity TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                location_lat REAL,
-                location_lon REAL,
-                cellular_data TEXT,
+            CREATE TABLE IF NOT EXISTS threats (
+                id TEXT PRIMARY KEY,
+                device_id TEXT,
+                threat_type TEXT,
+                severity TEXT,
                 description TEXT,
-                confidence REAL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                timestamp DATETIME,
+                latitude REAL,
+                longitude REAL,
+                cellular_data TEXT
             )
         ''')
         
+        # Devices table
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS device_sessions (
-                device_id TEXT PRIMARY KEY,
-                device_name TEXT,
-                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                connection_count INTEGER DEFAULT 0,
-                threat_count INTEGER DEFAULT 0
+            CREATE TABLE IF NOT EXISTS devices (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                type TEXT,
+                first_seen DATETIME,
+                last_seen DATETIME
             )
         ''')
         
+        # Monitoring events
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS monitoring_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_type TEXT NOT NULL,
+                event_type TEXT,
                 device_id TEXT,
-                event_data TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                event_data TEXT
             )
         ''')
         
         conn.commit()
         conn.close()
-        logger.info("Database initialized successfully")
-    
-    def load_config(self):
-        """Load monitoring configuration."""
-        try:
-            with open('cellular_remote_config.json', 'r') as f:
-                config = json.load(f)
-                self.monitoring_rules = config.get('monitoring_rules', {})
-                self.notification_settings = config.get('notifications', {})
-        except FileNotFoundError:
-            # Create default config
-            default_config = {
-                "monitoring_rules": {
-                    "high_severity_immediate": True,
-                    "location_tracking": True,
-                    "threat_correlation": True,
-                    "auto_export": True
-                },
-                "notifications": {
-                    "email_alerts": False,
-                    "slack_webhook": "",
-                    "telegram_bot_token": ""
-                }
-            }
-            with open('cellular_remote_config.json', 'w') as f:
-                json.dump(default_config, f, indent=2)
-            self.monitoring_rules = default_config['monitoring_rules']
-            self.notification_settings = default_config['notifications']
-    
-    def load_api_keys(self):
-        """Load API keys for device authentication."""
-        try:
-            with open('cellular_api_keys.txt', 'r') as f:
-                for line in f:
-                    key = line.strip()
-                    if key:
-                        self.api_keys.add(key)
-        except FileNotFoundError:
-            # Generate default API key
-            default_key = self.generate_api_key()
-            with open('cellular_api_keys.txt', 'w') as f:
-                f.write(f"{default_key}\n")
-            self.api_keys.add(default_key)
-            logger.info(f"Generated default API key: {default_key}")
-    
-    def generate_api_key(self) -> str:
-        """Generate a new API key."""
-        return base64.b64encode(uuid.uuid4().bytes).decode('utf-8').rstrip('=')
-    
-    def authenticate_device(self, api_key: str) -> bool:
-        """Authenticate device using API key."""
-        return api_key in self.api_keys
-    
-    async def register_device(self, websocket, device_data: Dict):
-        """Register a new device connection."""
-        device_id = device_data.get('device_id')
-        device_name = device_data.get('device_name', 'Unknown Device')
-        api_key = device_data.get('api_key')
+
+    async def start_server(self):
+        """Start the WebSocket server."""
+        host = self.config.get('host', '0.0.0.0')
+        port = self.config.get('port', 8766)
         
-        if not self.authenticate_device(api_key):
-            await self.send_error(websocket, "Authentication failed")
-            return False
+        # SSL Context would be added here for production
+        ssl_context = None
         
+        logger.info(f"Starting Remote Monitoring Server on ws://{host}:{port}")
+        
+        try:
+            async with websockets.serve(
+                self.handle_client,
+                host,
+                port,
+                ssl=ssl_context,
+                ping_interval=20,
+                ping_timeout=20
+            ):
+                await asyncio.Future()  # run forever
+        except Exception as e:
+            logger.error(f"Server error: {e}")
+
+    async def handle_client(self, websocket: websockets.WebSocketServerProtocol, path: str):
+        """Handle individual WebSocket client connections."""
+        device_id = None
+        
+        try:
+            async for message in websocket:
+                try:
+                    data = json.loads(message)
+                    
+                    # Decrypt OPSEC payload if necessary
+                    if self.encryptor and data.get("opsec_encrypted"):
+                        decrypted = self.encryptor.decrypt_payload(data)
+                        if "error" in decrypted:
+                            logger.error(f"Decryption failed for message: {message[:50]}...")
+                            await websocket.send(json.dumps({"type": "error", "message": "Decryption failed"}))
+                            continue
+                        data = decrypted
+
+                    msg_type = data.get('type')
+                    
+                    if msg_type == 'register_device':
+                        device_id = await self._handle_registration(websocket, data)
+                    
+                    elif not device_id:
+                        await websocket.send(json.dumps({
+                            "type": "error",
+                            "message": "Device not registered"
+                        }))
+                        continue
+                        
+                    elif msg_type == 'cellular_threat':
+                        await self._handle_threat(device_id, data)
+                        
+                    elif msg_type == 'heartbeat':
+                        self._update_device_seen(device_id)
+                        
+                    elif msg_type == 'status_update':
+                        await self._handle_status(device_id, data)
+                        
+                    else:
+                        logger.warning(f"Unknown message type from {device_id}: {msg_type}")
+                        
+                except json.JSONDecodeError:
+                    logger.error("Received invalid JSON")
+                except Exception as e:
+                    logger.error(f"Error handling message: {e}")
+                    
+        except websockets.exceptions.ConnectionClosed:
+            logger.info(f"Connection closed for device {device_id}")
+        finally:
+            if device_id in self.connected_devices:
+                del self.connected_devices[device_id]
+                self._log_event('device_disconnected', device_id, {})
+
+    async def _handle_registration(self, websocket: websockets.WebSocketServerProtocol, data: Dict) -> Optional[str]:
+        """Handle device registration and authentication."""
+        api_key = data.get('api_key')
+        device_id = data.get('device_id')
+        device_name = data.get('device_name', 'Unknown Device')
+        
+        if not api_key or api_key not in self.api_keys:
+            logger.warning(f"Invalid API key attempt from device {device_name}")
+            await websocket.send(json.dumps({
+                "type": "error",
+                "message": "Invalid API key"
+            }))
+            return None
+            
         if not device_id:
-            await self.send_error(websocket, "Device ID required")
-            return False
-        
-        # Store device info
-        self.connected_devices[device_id] = {
-            'websocket': websocket,
-            'device_name': device_name,
-            'connected_at': datetime.now(),
-            'last_seen': datetime.now(),
-            'threat_count': 0
+            logger.warning("Registration missing device_id")
+            return None
+            
+        self.connected_devices[device_id] = websocket
+        self.device_info[device_id] = {
+            "name": device_name,
+            "type": data.get('device_type', 'Unknown'),
+            "version": data.get('app_version', '1.0'),
+            "connected_at": datetime.now()
         }
         
-        # Update database
-        self.update_device_session(device_id, device_name)
-        
-        # Send confirmation
-        await self.send_message(websocket, {
-            'type': 'registration_success',
-            'device_id': device_id,
-            'server_time': datetime.now().isoformat(),
-            'monitoring_status': 'active'
-        })
+        self._update_device_record(device_id, device_name, data.get('device_type', 'Unknown'))
+        self._log_event('device_connected', device_id, self.device_info[device_id])
         
         logger.info(f"Device registered: {device_name} ({device_id})")
-        return True
-    
-    async def handle_cellular_threat(self, device_id: str, threat_data: Dict):
-        """Process incoming cellular threat data."""
-        try:
-            # Parse threat data
-            threat = RemoteCellularThreat(
-                device_id=device_id,
-                threat_id=threat_data.get('threat_id', str(uuid.uuid4())),
-                threat_type=threat_data.get('threat_type', 'UNKNOWN'),
-                severity=threat_data.get('severity', 'low'),
-                timestamp=datetime.fromisoformat(threat_data.get('timestamp', datetime.now().isoformat())),
-                location=threat_data.get('location'),
-                cellular_data=threat_data.get('cellular_data'),
-                description=threat_data.get('description', ''),
-                confidence=threat_data.get('confidence', 0.0)
-            )
-            
-            # Store threat
-            self.store_threat(threat)
-            self.threat_history.append(threat)
-            
-            # Update device stats
-            if device_id in self.connected_devices:
-                self.connected_devices[device_id]['threat_count'] += 1
-                self.connected_devices[device_id]['last_seen'] = datetime.now()
-            
-            # Process threat based on severity
-            await self.process_threat_alert(threat)
-            
-            # Send acknowledgment to device
-            if device_id in self.connected_devices:
-                await self.send_message(self.connected_devices[device_id]['websocket'], {
-                    'type': 'threat_acknowledged',
-                    'threat_id': threat.threat_id,
-                    'processed_at': datetime.now().isoformat()
-                })
-            
-            logger.info(f"Processed threat: {threat.threat_type} from {device_id} (severity: {threat.severity})")
-            
-        except Exception as e:
-            logger.error(f"Error processing threat from {device_id}: {e}")
-    
-    def store_threat(self, threat: RemoteCellularThreat):
+        
+        # Send registration success
+        await websocket.send(json.dumps({
+            "type": "registration_success",
+            "server_version": "1.0",
+            "monitoring_active": True
+        }))
+        
+        return device_id
+
+    async def _handle_threat(self, device_id: str, data: Dict):
+        """Process incoming threat data from a device."""
+        threat = RemoteCellularThreat(data)
+        
+        # Add to active threats
+        self.active_threats.append(threat)
+        
+        # Clean up old threats
+        cutoff_time = datetime.now() - self.threat_window
+        self.active_threats = [t for t in self.active_threats if t.timestamp > cutoff_time]
+        
+        # Store in database
+        self._store_threat(threat)
+        
+        logger.warning(f"🚨 THREAT from {device_id}: {threat.threat_type} ({threat.severity})")
+        
+        # Process threat based on rules
+        await self.process_threat_alert(threat)
+        
+        # Acknowledge receipt
+        websocket = self.connected_devices.get(device_id)
+        if websocket:
+            await websocket.send(json.dumps({
+                "type": "threat_acknowledged",
+                "threat_id": threat.threat_id
+            }))
+
+    async def _handle_status(self, device_id: str, data: Dict):
+        """Process periodic status updates from devices."""
+        self._update_device_seen(device_id)
+        
+        # Store status metrics if needed
+        metrics = data.get('metrics', {})
+        if metrics:
+            self._log_event('status_update', device_id, metrics)
+
+    def _update_device_record(self, device_id: str, name: str, device_type: str):
+        """Update device record in database."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        now = datetime.now().isoformat()
+        
+        cursor.execute('''
+            INSERT INTO devices (id, name, type, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+            name=excluded.name,
+            last_seen=excluded.last_seen
+        ''', (device_id, name, device_type, now, now))
+        
+        conn.commit()
+        conn.close()
+
+    def _update_device_seen(self, device_id: str):
+        """Update last seen timestamp for a device."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE devices SET last_seen = ? WHERE id = ?
+        ''', (datetime.now().isoformat(), device_id))
+        
+        conn.commit()
+        conn.close()
+
+    def _store_threat(self, threat: RemoteCellularThreat):
         """Store threat in database."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        location_lat = None
-        location_lon = None
-        if threat.location:
-            location_lat = threat.location.get('latitude')
-            location_lon = threat.location.get('longitude')
+        lat = threat.location.get('latitude') if threat.location else None
+        lon = threat.location.get('longitude') if threat.location else None
+        cell_data_str = json.dumps(threat.cellular_data) if threat.cellular_data else None
         
         cursor.execute('''
-            INSERT OR REPLACE INTO cellular_threats 
-            (device_id, threat_id, threat_type, severity, timestamp, 
-             location_lat, location_lon, cellular_data, description, confidence)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO threats 
+            (id, device_id, threat_type, severity, description, timestamp, latitude, longitude, cellular_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            threat.device_id,
-            threat.threat_id,
-            threat.threat_type,
-            threat.severity,
-            threat.timestamp.isoformat(),
-            location_lat,
-            location_lon,
-            json.dumps(threat.cellular_data) if threat.cellular_data else None,
-            threat.description,
-            threat.confidence
+            threat.threat_id, threat.device_id, threat.threat_type, 
+            threat.severity, threat.description, threat.timestamp.isoformat(),
+            lat, lon, cell_data_str
         ))
         
         conn.commit()
         conn.close()
-    
-    def update_device_session(self, device_id: str, device_name: str):
-        """Update device session in database."""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT OR REPLACE INTO device_sessions 
-            (device_id, device_name, last_seen, connection_count, threat_count)
-            VALUES (?, ?, CURRENT_TIMESTAMP, 
-                   COALESCE((SELECT connection_count FROM device_sessions WHERE device_id = ?) + 1, 1),
-                   COALESCE((SELECT threat_count FROM device_sessions WHERE device_id = ?), 0))
-        ''', (device_id, device_name, device_id, device_id))
-        
-        conn.commit()
-        conn.close()
-    
-    async def process_threat_alert(self, threat: RemoteCellularThreat):
-        """Process threat alerts based on severity and rules."""
-        # High severity threats get immediate attention
-        if threat.severity.lower() in ['high', 'critical']:
-            await self.send_high_priority_alert(threat)
-        
-        # Check for threat patterns
-        if self.monitoring_rules.get('threat_correlation', True):
-            await self.analyze_threat_patterns(threat)
-        
-        # Export data if auto-export enabled
-        if self.monitoring_rules.get('auto_export', False):
-            self.export_threat_data()
-    
-    async def send_high_priority_alert(self, threat: RemoteCellularThreat):
-        """Send high priority alert notifications."""
-        alert_message = {
-            'type': 'high_priority_alert',
-            'threat': threat.to_dict(),
-            'alert_level': 'URGENT',
-            'message': f"🚨 HIGH PRIORITY: {threat.threat_type} detected on {threat.device_id}",
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        # Send to all connected monitoring devices
-        for device_id, device_info in self.connected_devices.items():
-            try:
-                await self.send_message(device_info['websocket'], alert_message)
-            except:
-                pass  # Device might be disconnected
-        
-        # Log high priority event
-        self.log_monitoring_event('high_priority_alert', threat.device_id, threat.to_dict())
-        
-        logger.warning(f"🚨 HIGH PRIORITY ALERT: {threat.threat_type} from {threat.device_id}")
-    
-    async def analyze_threat_patterns(self, threat: RemoteCellularThreat):
-        """Analyze threat patterns for coordinated attacks."""
-        # Look for similar threats in recent history
-        recent_threats = [
-            t for t in self.threat_history 
-            if (datetime.now() - t.timestamp) < timedelta(hours=1)
-            and t.device_id != threat.device_id
-        ]
-        
-        # Check for coordinated IMSI catcher attacks
-        imsi_threats = [t for t in recent_threats if 'IMSI' in t.threat_type.upper()]
-        
-        if len(imsi_threats) >= 2:  # Multiple devices detecting IMSI catchers
-            coordination_alert = {
-                'type': 'coordinated_attack_detected',
-                'primary_threat': threat.to_dict(),
-                'related_threats': [t.to_dict() for t in imsi_threats],
-                'attack_pattern': 'COORDINATED_IMSI_CATCHER',
-                'device_count': len(set(t.device_id for t in imsi_threats)) + 1,
-                'message': f"🚨 COORDINATED ATTACK: IMSI catchers detected on {len(imsi_threats) + 1} devices",
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            # Send coordinated attack alert
-            for device_id, device_info in self.connected_devices.items():
-                try:
-                    await self.send_message(device_info['websocket'], coordination_alert)
-                except:
-                    pass
-            
-            logger.critical(f"🚨 COORDINATED ATTACK DETECTED: IMSI catchers on {len(imsi_threats) + 1} devices")
-    
-    def log_monitoring_event(self, event_type: str, device_id: str, event_data: Dict):
-        """Log monitoring events to database."""
+
+    def _log_event(self, event_type: str, device_id: str, event_data: Dict):
+        """Log a monitoring event to the database."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -376,183 +372,104 @@ class CellularRemoteMonitoringServer:
         
         conn.commit()
         conn.close()
-    
-    def export_threat_data(self):
-        """Export threat data to JSON file."""
-        export_data = {
-            'export_timestamp': datetime.now().isoformat(),
-            'total_threats': len(self.threat_history),
-            'connected_devices': len(self.connected_devices),
-            'threats': [threat.to_dict() for threat in self.threat_history[-100:]]  # Last 100 threats
-        }
-        
-        filename = f"cellular_threats_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(filename, 'w') as f:
-            json.dump(export_data, f, indent=2)
-        
-        logger.info(f"Threat data exported to {filename}")
-    
-    async def send_message(self, websocket, message: Dict):
-        """Send message to websocket client."""
-        try:
-            await websocket.send(json.dumps(message))
-        except Exception as e:
-            logger.error(f"Error sending message: {e}")
-    
-    async def send_error(self, websocket, error_message: str):
-        """Send error message to client."""
-        await self.send_message(websocket, {
-            'type': 'error',
-            'message': error_message,
-            'timestamp': datetime.now().isoformat()
-        })
-    
-    async def handle_client_message(self, websocket, path):
-        """Handle incoming client messages."""
-        device_id = None
-        try:
-            async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    message_type = data.get('type')
-                    
-                    if message_type == 'register_device':
-                        success = await self.register_device(websocket, data)
-                        if success:
-                            device_id = data.get('device_id')
-                    
-                    elif message_type == 'cellular_threat':
-                        if device_id:
-                            await self.handle_cellular_threat(device_id, data)
-                        else:
-                            await self.send_error(websocket, "Device not registered")
-                    
-                    elif message_type == 'heartbeat':
-                        if device_id and device_id in self.connected_devices:
-                            self.connected_devices[device_id]['last_seen'] = datetime.now()
-                            await self.send_message(websocket, {
-                                'type': 'heartbeat_ack',
-                                'timestamp': datetime.now().isoformat()
-                            })
-                    
-                    elif message_type == 'get_status':
-                        await self.send_message(websocket, {
-                            'type': 'status_response',
-                            'connected_devices': len(self.connected_devices),
-                            'total_threats_today': len([
-                                t for t in self.threat_history 
-                                if (datetime.now() - t.timestamp) < timedelta(days=1)
-                            ]),
-                            'server_uptime': datetime.now().isoformat(),
-                            'monitoring_active': True
-                        })
-                    
-                    else:
-                        await self.send_error(websocket, f"Unknown message type: {message_type}")
-                
-                except json.JSONDecodeError:
-                    await self.send_error(websocket, "Invalid JSON message")
-                except Exception as e:
-                    logger.error(f"Error processing message: {e}")
-                    await self.send_error(websocket, "Error processing message")
-        
-        except websockets.exceptions.ConnectionClosed:
-            logger.info(f"Device disconnected: {device_id}")
-        except Exception as e:
-            logger.error(f"Connection error: {e}")
-        finally:
-            # Clean up device connection
-            if device_id and device_id in self.connected_devices:
-                del self.connected_devices[device_id]
-                logger.info(f"Cleaned up connection for device: {device_id}")
-    
-    def get_statistics(self) -> Dict:
-        """Get monitoring statistics."""
-        now = datetime.now()
-        
-        # Threats by time period
-        threats_1h = len([t for t in self.threat_history if (now - t.timestamp) < timedelta(hours=1)])
-        threats_24h = len([t for t in self.threat_history if (now - t.timestamp) < timedelta(days=1)])
-        threats_7d = len([t for t in self.threat_history if (now - t.timestamp) < timedelta(days=7)])
-        
-        # Threat types
-        threat_types = {}
-        for threat in self.threat_history:
-            threat_types[threat.threat_type] = threat_types.get(threat.threat_type, 0) + 1
-        
-        return {
-            'connected_devices': len(self.connected_devices),
-            'total_threats': len(self.threat_history),
-            'threats_1h': threats_1h,
-            'threats_24h': threats_24h,
-            'threats_7d': threats_7d,
-            'threat_types': threat_types,
-            'uptime': datetime.now().isoformat()
-        }
-    
-    async def start_server(self):
-        """Start the remote monitoring server."""
-        logger.info(f"Starting Cellular Remote Monitoring Server on {self.host}:{self.port}")
-        
-        # Setup SSL if enabled
-        ssl_context = None
-        if self.use_ssl:
-            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ssl_context.load_cert_chain("cert.pem", "key.pem")  # You'll need to provide these
-        
-        # Start WebSocket server
-        start_server = websockets.serve(
-            self.handle_client_message,
-            self.host,
-            self.port,
-            ssl=ssl_context
-        )
-        
-        logger.info(f"🛡️ Cellular Remote Monitoring Server started on {'wss' if self.use_ssl else 'ws'}://{self.host}:{self.port}")
-        logger.info(f"📊 Database: {self.db_path}")
-        logger.info(f"🔑 API Keys loaded: {len(self.api_keys)}")
-        
-        return start_server
 
-def main():
-    """Main function to run the server."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Cellular Security Remote Monitoring Server')
-    parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
-    parser.add_argument('--port', type=int, default=8766, help='Server port (default: 8766)')
-    parser.add_argument('--ssl', action='store_true', help='Enable SSL/TLS encryption')
-    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
-    
-    args = parser.parse_args()
-    
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    
-    # Create and start server
-    server = CellularRemoteMonitoringServer(
-        host=args.host,
-        port=args.port,
-        use_ssl=args.ssl
-    )
-    
-    # Run server
-    loop = asyncio.get_event_loop()
-    start_server = loop.run_until_complete(server.start_server())
+    async def process_threat_alert(self, threat: RemoteCellularThreat):
+        """Process threat alerts based on severity and rules."""
+        
+        # Check if it's a high priority threat
+        if threat.threat_type in self.monitoring_rules.get('high_priority_threats', []):
+            await self._broadcast_high_priority_alert(threat)
+            
+        # Correlate threats if enabled
+        if self.monitoring_rules.get('threat_correlation', True):
+            await self._correlate_threats(threat)
+
+    async def _broadcast_high_priority_alert(self, threat: RemoteCellularThreat):
+        """Broadcast high priority threats to all connected devices."""
+        alert_msg = {
+            "type": "high_priority_alert",
+            "threat": {
+                "type": threat.threat_type,
+                "severity": threat.severity,
+                "description": threat.description,
+                "timestamp": threat.timestamp.isoformat()
+            }
+        }
+        
+        if self.encryptor and self.encryptor.enabled:
+            alert_msg = self.encryptor.encrypt_payload(alert_msg)
+            
+        message = json.dumps(alert_msg)
+        
+        # Send to all devices EXCEPT the one that reported it
+        for device_id, websocket in self.connected_devices.items():
+            if device_id != threat.device_id:
+                try:
+                    await websocket.send(message)
+                except Exception as e:
+                    logger.error(f"Failed to broadcast to {device_id}: {e}")
+
+    async def _correlate_threats(self, new_threat: RemoteCellularThreat):
+        """Correlate threats to detect coordinated attacks."""
+        if not new_threat.location:
+            return
+            
+        recent_threats = []
+        for t in self.active_threats:
+            if t.threat_id != new_threat.threat_id and t.location:
+                # Check if threats are of the same type and from different devices
+                if t.threat_type == new_threat.threat_type and t.device_id != new_threat.device_id:
+                    # In a real implementation, we would calculate actual distance
+                    # For this prototype, we'll just check if they have locations
+                    recent_threats.append(t)
+                    
+        threshold = self.config.get('coordinated_attack_threshold', 3)
+        if len(recent_threats) >= threshold - 1: # -1 because we include the new threat
+            logger.critical(f"🚨 COORDINATED ATTACK DETECTED: {new_threat.threat_type} across {len(recent_threats) + 1} devices")
+            
+            alert_msg = {
+                "type": "coordinated_attack_detected",
+                "attack_type": new_threat.threat_type,
+                "device_count": len(recent_threats) + 1,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            if self.encryptor and self.encryptor.enabled:
+                alert_msg = self.encryptor.encrypt_payload(alert_msg)
+                
+            message = json.dumps(alert_msg)
+            
+            # Broadcast to all devices
+            for websocket in self.connected_devices.values():
+                try:
+                    await websocket.send(message)
+                except Exception:
+                    pass
+
+    def export_threat_data(self):
+        """Export all threat data to JSON for analysis."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM threats ORDER BY timestamp DESC')
+        rows = cursor.fetchall()
+        
+        threats = [dict(row) for row in rows]
+        
+        conn.close()
+        
+        filename = f"threat_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(filename, 'w') as f:
+            json.dump(threats, f, indent=4)
+            
+        logger.info(f"Exported {len(threats)} threats to {filename}")
+        return filename
+
+if __name__ == "__main__":
+    server = CellularRemoteMonitoringServer()
     
     try:
-        loop.run_until_complete(start_server)
-        loop.run_forever()
+        asyncio.run(server.start_server())
     except KeyboardInterrupt:
-        logger.info("Server shutting down...")
-        # Export final data
-        server.export_threat_data()
-        logger.info("📊 Final threat data exported")
-    except Exception as e:
-        logger.error(f"Server error: {e}")
-    finally:
-        loop.close()
-        logger.info("Server stopped")
-
-if __name__ == '__main__':
-    main()
+        logger.info("Server stopped by user")

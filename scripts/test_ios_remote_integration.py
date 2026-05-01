@@ -181,22 +181,35 @@ def run_red_team(args) -> int:
 # ── Integration & Coverage Summary ───────────────────────────────────────────
 
 def print_system_summary():
-    logger.info("Clutch System Summary")
+    logger.info("Clutch System Summary (Dynamic Audit)")
     logger.info("=" * 50)
+    import os
+    
+    # Check Python classes and modules
+    def has_class(module, class_name):
+        try:
+            with open(f"scripts/{module}.py", "r") as f:
+                return f"class {class_name}" in f.read()
+        except Exception:
+            return False
+
+    def has_file(path):
+        return os.path.exists(path)
+        
     components = {
-        "iOS CoreTelephony monitoring": True,
-        "IMSI catcher detection (basic)": True,
-        "Advanced ML-based detection": True,
-        "Remote WebSocket coordination": True,
-        "Active firewall blocking": True,
-        "Cellular geofencing": True,
-        "Triggered PCAP capture": True,
-        "Incident report generation": True,
-        "TLS/DNSSEC trust chain view": True,
-        "SIGINT map visualization (iOS)": True,
-        "Adversary emulation suite": True,
-        "ATTACK_VECTORS.md": True,
-        "Hardened Dockerfile": True,
+        "iOS CoreTelephony monitoring": has_file("iOS-App/NetworkSecurityMonitor/ContentView.swift") and "CTGetSignalStrength" in open("iOS-App/NetworkSecurityMonitor/ContentView.swift").read(),
+        "IMSI catcher detection (basic)": has_class("cellular_security", "CellularSecurityMonitor"),
+        "Advanced ML-based detection": has_class("advanced_cellular_security", "AdvancedIMSICatcherDetector"),
+        "Remote WebSocket coordination": has_class("cellular_remote_server", "CellularRemoteMonitoringServer"),
+        "Active firewall blocking": has_class("advanced_cellular_security", "ActiveBlockingModule"),
+        "Cellular geofencing": has_class("advanced_cellular_security", "CellularGeofencing"),
+        "Triggered PCAP capture": has_class("advanced_cellular_security", "TriggeredPCAPCapture"),
+        "Incident report generation": has_class("advanced_cellular_security", "IncidentReporter"),
+        "TLS/DNSSEC trust chain view": has_file("iOS-App/NetworkSecurityMonitor/TrustChainView.swift"),
+        "SIGINT map visualization (iOS)": has_file("iOS-App/NetworkSecurityMonitor/ContentView.swift"),
+        "Adversary emulation suite": has_class("adversary_emulation", "CellularDowngradeSimulator"),
+        "ATTACK_VECTORS.md": has_file("docs/ATTACK_VECTORS.md"),
+        "Hardened Dockerfile": has_file("Dockerfile"),
     }
     for component, status in components.items():
         marker = "[+]" if status else "[ ]"
