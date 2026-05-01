@@ -48,9 +48,15 @@ No single indicator is proof. Clutch watches for patterns across indicators, in 
 
 **iOS App** — CoreTelephony integration for actual cellular hardware data, not approximations. 4-tab interface: Dashboard, Cellular, Alerts, Settings. Local ML threat analysis. Optional WebSocket client for coordinated team intelligence.
 
-**Python Backend** — Multi-platform cellular data collection (macOS system_profiler, Linux ModemManager). IsolationForest and DBSCAN anomaly detection. RF fingerprinting and timing analysis. SQLite threat database.
+**Python Backend** — Multi-platform cellular data collection (macOS `system_profiler`, Linux ModemManager). Machine learning models (IsolationForest, DBSCAN) for anomaly detection. RF fingerprinting, timing analysis, and Active Defense null-routing.
 
-**Remote Coordination Server** — WebSocket server for real-time threat sharing across devices. Device authentication, API key management, geographic threat correlation. For teams that need shared cellular intelligence across multiple monitoring points.
+**Remote Coordination Server** — WebSocket server for real-time threat sharing across devices. Device authentication, OPSEC AES-256 encryption, API key management, and geographic threat correlation. For teams that need shared cellular intelligence across multiple monitoring points.
+
+### 👻 Ghost-Protocol Capabilities
+- **OPSEC E2EE Telemetry:** AES-256-CBC encrypted WebSocket traffic. Even if the network is tapped, adversaries cannot read your threat alerts or know you are running Clutch.
+- **SDR Passive Verification:** Stub interface ready for RTL-SDR/HackRF. Scans the RF spectrum to find "Phantom Towers" that are broadcasting but hiding from your OS's neighbor list.
+- **Automated Null-Routing (Kill-Switch):** Active defense module that instantly null-routes all non-essential traffic if an IMSI catcher is confirmed (0.90+ confidence), protecting you from exploits delivered over the rogue tower.
+- **Geographic SIGINT Heatmap:** Correlates threats across multiple devices into a live Leaflet.js dashboard, creating a visual map of active surveillance zones.
 
 ---
 

@@ -409,7 +409,9 @@ class CellularDowngradeSimulator:
 
     def inject_stingray_pattern(self, cycles: int = 8) -> Dict:
         """
-        Feed escalating StingRay measurements into the detector.
+        Feed escalating StingRay measurements into the detector and 
+        transmit reproducible scapy GTP-U simulated packets for forensic 
+        capture and actionable alerting.
         Returns detection results with coverage rate.
         """
         try:
@@ -449,6 +451,13 @@ class CellularDowngradeSimulator:
             "INVALID_PHYSICAL_CELL_ID",
             "POTENTIAL_JAMMING",
         }
+        
+        try:
+            from scapy.all import IP, UDP, send
+            scapy_available = True
+        except ImportError:
+            scapy_available = False
+            log.warning("[CELLULAR-SIM] scapy unavailable — skipping live packet injection")
 
         for cycle in range(cycles):
             metrics = AdvancedCellularMetrics(
@@ -458,6 +467,45 @@ class CellularDowngradeSimulator:
                 signal_quality=60,
                 timing_advance=0,                     # TA=0 hallmark
                 pci=999,                              # invalid PCI
+                earfcn=1500,                          # out of band
+                rsrp=-60.0 + (cycle * 4),
+                rsrq=-5.0,
+                sinr=-12.0,                           # heavy interference
+                encryption_algorithm="None",          # downgrade
+                neighbor_cells=[],                    # isolation
+                uplink_power=20.0 + cycle             # struggling to transmit
+            )
+            
+            # Actionable Emulation: Inject Scapy Traffic (GTP-U/S1AP simulation)
+            if scapy_available:
+                # Simulating a rogue GTP-U tunnel packet (UDP 2152) carrying unencrypted indicators
+                payload = f"IMSI_CATCHER_SIG: TA=0, PCI=999, ENC=None, PWR={metrics.uplink_power}".encode()
+                pkt = IP(dst="127.0.0.1", src="127.0.0.99") / UDP(sport=2152, dport=2152) / payload
+                send(pkt, verbose=0)
+
+            self._injections += 1
+            result["injections"].append({"cycle": cycle, "rssi": metrics.signal_strength})
+            
+            threats = self._detector.detect_anomalies(metrics)
+            for t in threats:
+                if t.threat_type not in result["threats_detected"]:
+                    result["threats_detected"].append(t.threat_type)
+            
+            time.sleep(0.5)
+
+        det_set = set(result["threats_detected"])
+        missed = expected_threats - det_set
+        
+        # Calculate rates
+        if len(expected_threats) > 0:
+            rate = len(expected_threats.intersection(det_set)) / len(expected_threats)
+        else:
+            rate = 1.0
+
+        result["end_time"] = datetime.now().isoformat()
+        result["detection_rate"] = rate
+        result["missed_detections"] = list(missed)
+        return result
                 rsrp=-60.0 + (cycle * 3),
                 rsrq=-15.0,
                 sinr=-12.0,                           # jamming-level
