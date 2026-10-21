@@ -87,6 +87,16 @@ Mitigation suggestions are defaults. Sensitivity thresholds, alert behavior, and
 
 ---
 
+## Crossing the Atlantic
+
+Clutch was built in the United States, for journalists and their sources during a stretch of heavy field surveillance. Moving it to Europe does not change the threat model. It just changes the paperwork.
+
+IMSI catchers are not a US-only story. France names them directly in its intelligence law of 24 July 2015 (Article L. 851-5 of the Code de la sécurité intérieure), which put the devices on an explicit legal footing for real-time tracking of a person, vehicle, or object. Across the Channel, a Privacy International and VICE News investigation found signs of cell-site simulators at multiple London locations, including near Parliament and at a protest. The hardware, the downgrade tricks, and the silent trust your phone places in the nearest tower are identical whether you are in Lower Manhattan or the 11th arrondissement.
+
+So Clutch comes to Europe unchanged in what it does, and a little friendlier in how it says hello. Same readable detections, same local-first privacy, same idea that a defensive tool should show its work. If you report, organize, fix, or research anywhere the cellular layer matters, this is for you. Fork it and shape it to your own threat model. You are welcome here.
+
+---
+
 ## Install
 
 ### Download
@@ -161,7 +171,7 @@ clutch/
 
 ## Who This Is For
 
-Journalists in environments where cellular surveillance is documented. Activists in jurisdictions with known IMSI catcher deployments. Security professionals verifying cellular integrity in sensitive locations. Researchers and red teamers who need to know whether the blue team has the cellular layer covered.
+Journalists in environments where cellular surveillance is documented. Activists in jurisdictions with known IMSI catcher deployments. Security professionals verifying cellular integrity in sensitive locations. Researchers and red teamers who need to know whether the blue team has the cellular layer covered. This now explicitly includes Europe, where IMSI catchers are both legally provisioned and independently documented.
 
 The threat varies by context. The tool is built to be adjustable to the threat.
 
