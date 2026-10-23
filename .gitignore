@@ -74,7 +74,11 @@ build/
 # Temporary files
 *.tmp
 *.temp
+*.bak
 .cache/
+
+# Release artifacts (ship as GitHub release assets, not in-repo)
+*.zip
 
 # Documentation build files
 docs/_build/
