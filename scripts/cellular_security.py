@@ -4,6 +4,8 @@ Cellular Security Monitor - IMSI Catcher Detection and Signal Anomaly Analysis
 Advanced cellular network security monitoring for detecting IMSI catchers and other threats.
 """
 
+from __future__ import annotations
+
 import json
 import time
 import math
@@ -79,6 +81,7 @@ class CellularMeasurement:
     neighbor_towers: List[CellularTower] = None
     location: Optional[Tuple[float, float]] = None
     device_movement_speed: Optional[float] = None  # km/h
+    timing_advance: Optional[float] = None  # Protocol-specific measurement; None means unavailable
     
     def __post_init__(self):
         if self.neighbor_towers is None:
@@ -120,12 +123,13 @@ class CellularSecurityMonitor:
         
         # Analysis state
         self.last_location: Optional[Tuple[float, float]] = None
+        self.analysis_status = {}
         self.movement_history: deque = deque(maxlen=100)
-        self.signal_anomaly_threshold = self.config.get('signal_anomaly_threshold', 15)  # dBm
+        self.signal_anomaly_threshold = self.config.get('signal_anomaly_threshold', 15)  # dB difference
         self.tower_change_threshold = self.config.get('tower_change_threshold', 5)  # changes per hour
         
         # IMSI Catcher detection parameters
-        self.signal_jump_threshold = self.config.get('signal_jump_threshold', 20)  # dBm
+        self.signal_jump_threshold = self.config.get('signal_jump_threshold', 20)  # dB difference
         self.timing_advance_threshold = self.config.get('timing_advance_threshold', 5)
         self.encryption_downgrade_alert = self.config.get('encryption_downgrade_alert', True)
         
@@ -532,10 +536,38 @@ class CellularSecurityMonitor:
             
         return None
     
+    def _record_input_status(self, stage: str, issues: List[str]):
+        if not hasattr(self, 'analysis_status'):
+            self.analysis_status = {}
+        self.analysis_status[stage] = {
+            'state': 'unavailable' if issues else 'available',
+            'issues': sorted(set(issues)),
+        }
+
+    def _feature_input_issues(self, measurement: CellularMeasurement) -> List[str]:
+        """Validate supplied ML fields, not their physical acquisition or provenance."""
+        issues = []
+        for field in ('signal_strength', 'signal_quality', 'timing_advance'):
+            value = getattr(measurement, field, None)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                issues.append(field)
+        if measurement.timing_advance is not None and 'timing_advance' not in issues and measurement.timing_advance < 0:
+            issues.append('timing_advance')
+        if measurement.technology not in ('5G', '4G', 'LTE', '3G', '2G', 'GSM'):
+            issues.append('technology')
+        if measurement.encryption_status not in ('A5/3', 'A5/1', 'A5/0', 'None'):
+            issues.append('encryption_status')
+        return issues
+
     def analyze_measurement(self, measurement: CellularMeasurement) -> List[SecurityThreat]:
         """Analyze a cellular measurement for security threats."""
         threats = []
-        
+        signal = measurement.signal_strength
+        if isinstance(signal, bool) or not isinstance(signal, (int, float)) or not math.isfinite(signal):
+            self._record_input_status('measurement', ['signal_strength'])
+            return threats
+        self._record_input_status('measurement', [])
+
         # Update tower database
         tower_key = f"{measurement.tower.cell_id}_{measurement.tower.lac}"
         if tower_key not in self.tower_database:
@@ -620,7 +652,14 @@ class CellularSecurityMonitor:
     
     def _extract_ml_features(self, measurement: CellularMeasurement) -> Optional[List[float]]:
         """Extract features for machine learning analysis."""
-        if not ML_AVAILABLE or len(self.measurement_history) < 5:
+        if not NUMPY_AVAILABLE or len(self.measurement_history) < 5:
+            self._record_input_status('ml_features', ['numpy' if not NUMPY_AVAILABLE else 'history'])
+            return None
+        issues = []
+        for row in list(self.measurement_history)[-10:] + [measurement]:
+            issues.extend(self._feature_input_issues(row))
+        self._record_input_status('ml_features', issues)
+        if issues:
             return None
             
         try:
@@ -628,7 +667,7 @@ class CellularSecurityMonitor:
             
             # Basic signal features
             features.append(measurement.signal_strength)
-            features.append(measurement.signal_quality or 0)
+            features.append(measurement.signal_quality)
             
             # Historical signal analysis
             recent_signals = [m.signal_strength for m in list(self.measurement_history)[-10:]]
@@ -647,7 +686,7 @@ class CellularSecurityMonitor:
             features.append(tower_changes_24h)
             
             # Timing and technology features
-            features.append(measurement.timing_advance or 0)
+            features.append(measurement.timing_advance)
             tech_score = self._technology_to_score(measurement.technology)
             features.append(tech_score)
             
@@ -860,9 +899,16 @@ class CellularSecurityMonitor:
     
     def _extract_pattern_features(self) -> Optional[np.ndarray]:
         """Extract features for pattern analysis."""
-        if not ML_AVAILABLE or len(self.measurement_history) < 10:
+        if not NUMPY_AVAILABLE or len(self.measurement_history) < 10:
+            self._record_input_status('pattern_features', ['numpy' if not NUMPY_AVAILABLE else 'history'])
             return None
-            
+        rows = list(self.measurement_history)[-50:]
+        issues = [issue for row in rows for issue in self._feature_input_issues(row)]
+        if not rows:
+            issues.append('history')
+        self._record_input_status('pattern_features', issues)
+        if issues:
+            return None
         try:
             features = []
             measurements = list(self.measurement_history)[-50:]  # Last 50 measurements
@@ -872,8 +918,8 @@ class CellularSecurityMonitor:
                 
                 # Signal characteristics
                 feature_row.append(measurement.signal_strength)
-                feature_row.append(measurement.signal_quality or 0)
-                feature_row.append(measurement.timing_advance or 0)
+                feature_row.append(measurement.signal_quality)
+                feature_row.append(measurement.timing_advance)
                 
                 # Technology and encryption
                 feature_row.append(self._technology_to_score(measurement.technology))
@@ -914,9 +960,10 @@ class CellularSecurityMonitor:
                     threat_type="IMSI_CATCHER_SUSPECTED",
                     severity="high",
                     timestamp=measurement.timestamp,
-                    description=f"Sudden signal strength increase of {signal_jump} dBm detected",
+                    description=f"Sudden signal strength increase of {signal_jump} dB detected",
                     evidence={
                         "signal_jump": signal_jump,
+                        "signal_jump_unit": "dB",
                         "previous_strength": prev_measurement.signal_strength,
                         "current_strength": measurement.signal_strength,
                         "tower_id": measurement.tower.cell_id
